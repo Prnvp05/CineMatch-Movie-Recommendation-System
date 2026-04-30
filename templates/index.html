@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CineMatch — Your Personal Film Oracle</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="home-page">
+
+<div class="home-bg">
+  <div class="film-strip top"></div>
+  <div class="film-strip bottom"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+  <div class="spotlight"></div>
+</div>
+
+<header class="home-header">
+  <div class="logo-mark">CINE<span>MATCH</span></div>
+</header>
+
+<main class="home-main">
+  <div class="hero-text">
+    <div class="tag-line">Your Personal</div>
+    <h1 class="hero-title">Film <em>Oracle</em></h1>
+    <p class="hero-sub">Movies recommended by machine intelligence. Tuned to your taste.</p>
+  </div>
+
+  <div class="auth-card" id="auth-card">
+    <!-- Tab switcher -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+      <button class="auth-tab" onclick="switchTab('signup')">Create Account</button>
+    </div>
+
+    <!-- Login Form -->
+    <div class="auth-form" id="login-form">
+      <div class="form-group">
+        <label>Username or Email</label>
+        <input type="text" id="login-identifier" placeholder="your@email.com" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="form-error" id="login-error"></div>
+      <button class="btn-primary full" onclick="handleLogin()">Enter the Cinema</button>
+    </div>
+
+    <!-- Signup Form -->
+    <div class="auth-form hidden" id="signup-form">
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="signup-username" placeholder="cinephile42" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="signup-email" placeholder="your@email.com" autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="signup-password" placeholder="Min. 6 characters" autocomplete="new-password" />
+      </div>
+      <div class="form-error" id="signup-error"></div>
+      <button class="btn-primary full" onclick="handleSignup()">Begin Your Journey</button>
+    </div>
+  </div>
+
+  <div class="floating-films">
+    <div class="film-card f1">🎬</div>
+    <div class="film-card f2">🎥</div>
+    <div class="film-card f3">🍿</div>
+    <div class="film-card f4">🎞️</div>
+  </div>
+</main>
+
+<script>
+function switchTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'signup'));
+  });
+  document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('signup-form').classList.toggle('hidden', tab !== 'signup');
+  document.getElementById('login-error').textContent = '';
+  document.getElementById('signup-error').textContent = '';
+}
+
+async function handleLogin() {
+  const btn = document.querySelector('#login-form .btn-primary');
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+
+  const res = await fetch('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      identifier: document.getElementById('login-identifier').value,
+      password: document.getElementById('login-password').value
+    })
+  });
+  const data = await res.json();
+  if (data.success) {
+    window.location.href = data.redirect;
+  } else {
+    err.textContent = data.error;
+    btn.textContent = 'Enter the Cinema';
+    btn.disabled = false;
+  }
+}
+
+async function handleSignup() {
+  const btn = document.querySelector('#signup-form .btn-primary');
+  const err = document.getElementById('signup-error');
+  err.textContent = '';
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+
+  const res = await fetch('/api/signup', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      username: document.getElementById('signup-username').value,
+      email: document.getElementById('signup-email').value,
+      password: document.getElementById('signup-password').value
+    })
+  });
+  const data = await res.json();
+  if (data.success) {
+    window.location.href = data.redirect;
+  } else {
+    err.textContent = data.error;
+    btn.textContent = 'Begin Your Journey';
+    btn.disabled = false;
+  }
+}
+
+// Enter key support
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const loginVisible = !document.getElementById('login-form').classList.contains('hidden');
+  if (loginVisible) handleLogin();
+  else handleSignup();
+});
+</script>
+</body>
+</html>

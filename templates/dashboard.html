@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Discover — CineMatch{% endblock %}
+
+{% block content %}
+<div class="dashboard-page">
+  <div class="grain"></div>
+
+  <div class="dash-header">
+    <div>
+      <h1 class="dash-title">Good evening, <span id="dash-username">{{ username }}</span></h1>
+      <p class="dash-sub">Your personalised recommendations, powered by ML</p>
+    </div>
+    <div class="dash-tags">
+      <button type="button" class="badge" id="mode-content" onclick="setMode('content')">Content-Based</button>
+      <button type="button" class="badge" id="mode-collab" onclick="setMode('collab')">Collaborative</button>
+      <button type="button" class="badge accent" id="mode-hybrid" onclick="setMode('hybrid')">Hybrid AI</button>
+    </div>
+  </div>
+
+  <!-- Recommendations Section -->
+  <section class="movie-section">
+    <div class="section-header">
+      <h2>Recommended for You</h2>
+      <button class="btn-ghost small" onclick="refreshRecs()">↻ Refresh</button>
+    </div>
+    <div class="movie-grid" id="rec-grid">
+      <div class="loading-state">
+        <div class="spinner"></div>
+        <p>Our ML engine is thinking…</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Liked Movies Section -->
+  <section class="movie-section" id="liked-section" style="display:none">
+    <div class="section-header">
+      <h2>Your Liked Films</h2>
+      <a href="/search" class="btn-ghost small">+ Add More</a>
+    </div>
+    <div class="movie-grid horizontal" id="liked-grid"></div>
+  </section>
+</div>
+
+<!-- Movie Detail Modal -->
+<div class="modal-overlay hidden" id="movie-modal" onclick="closeModal(event)">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModalBtn()">✕</button>
+    <div class="modal-content" id="modal-content"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let userLiked = new Set();
+let userWatched = new Set();
+let recMode = 'hybrid';
+
+async function init() {
+  const status = await fetch('/api/user/status').then(r => r.json());
+  userLiked = new Set(status.liked_ids || []);
+  userWatched = new Set(status.watched_ids || []);
+  document.getElementById('dash-username').textContent = status.username || '{{ username }}';
+  applyModeUI();
+  await loadRecommendations();
+  await loadLiked();
+}
+
+function applyModeUI() {
+  const content = document.getElementById('mode-content');
+  const collab = document.getElementById('mode-collab');
+  const hybrid = document.getElementById('mode-hybrid');
+  if (content) content.classList.toggle('accent', recMode === 'content');
+  if (collab) collab.classList.toggle('accent', recMode === 'collab');
+  if (hybrid) hybrid.classList.toggle('accent', recMode === 'hybrid');
+}
+
+async function setMode(mode) {
+  recMode = mode;
+  applyModeUI();
+  await refreshRecs();
+}
+
+async function loadRecommendations() {
+  const grid = document.getElementById('rec-grid');
+  grid.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Our ML engine is thinking…</p></div>';
+  const data = await fetch(`/api/recommendations?mode=${encodeURIComponent(recMode)}&t=${Date.now()}`).then(r => r.json());
+  if (!data.recommendations || data.recommendations.length === 0) {
+    grid.innerHTML = '<div class="empty-state">No recommendations yet. Like more movies to improve suggestions!</div>';
+    return;
+  }
+  grid.innerHTML = data.recommendations.map(m => movieCard(m, userLiked, userWatched)).join('');
+}
+
+async function loadLiked() {
+  const data = await fetch('/api/movies/liked').then(r => r.json());
+  const section = document.getElementById('liked-section');
+  const grid = document.getElementById('liked-grid');
+  if (data.movies && data.movies.length > 0) {
+    section.style.display = 'block';
+    grid.innerHTML = data.movies.map(m => movieCard(m, userLiked, userWatched, true)).join('');
+  }
+}
+
+async function refreshRecs() {
+  await loadRecommendations();
+}
+
+function movieCard(m, liked, watched, small = false) {
+  const isLiked = liked.has(m.id);
+  const isWatched = watched.has(m.id);
+  return `
+  <div class="movie-card ${small ? 'small' : ''}" onclick="openModal(${m.id})">
+    <div class="card-poster">
+      <img src="${m.poster}" alt="${m.title}" loading="lazy" onerror="this.src='https://picsum.photos/seed/${m.id}x/300/450'">
+      <div class="card-overlay">
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="action-btn ${isLiked ? 'active' : ''}" title="Like" onclick="toggleLike(${m.id}, this)">
+            ${isLiked ? '❤️' : '🤍'}
+          </button>
+          <button class="action-btn ${isWatched ? 'active' : ''}" title="Mark watched" onclick="toggleWatch(${m.id}, this)">
+            ${isWatched ? '✅' : '👁️'}
+          </button>
+        </div>
+      </div>
+      <div class="card-rating">⭐ ${m.rating}</div>
+    </div>
+    <div class="card-info">
+      <div class="card-title">${m.title}</div>
+      <div class="card-meta">${m.year} · ${(m.genres || []).slice(0,2).join(', ')}</div>
+    </div>
+  </div>`;
+}
+
+async function toggleLike(movieId, btn) {
+  const isLiked = userLiked.has(movieId);
+  const endpoint = isLiked ? '/api/movies/unlike' : '/api/movies/like';
+  const data = await fetch(endpoint, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userLiked = new Set(data.liked || []);
+  btn.textContent = userLiked.has(movieId) ? '❤️' : '🤍';
+  btn.classList.toggle('active', userLiked.has(movieId));
+  loadLiked();
+}
+
+async function toggleWatch(movieId, btn) {
+  const isWatched = userWatched.has(movieId);
+  const endpoint = isWatched ? '/api/movies/unwatch' : '/api/movies/watch';
+  const data = await fetch(endpoint, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userWatched = new Set(data.watched || []);
+  btn.textContent = userWatched.has(movieId) ? '✅' : '👁️';
+  btn.classList.toggle('active', userWatched.has(movieId));
+  if (isWatched === false) {
+    // Movie now watched — remove from recommendations
+    setTimeout(() => loadRecommendations(), 800);
+  }
+}
+
+async function openModal(movieId) {
+  const rec = await fetch('/api/recommendations').then(r => r.json());
+  // Find from liked or all
+  const liked = await fetch('/api/movies/liked').then(r => r.json());
+  const allMovies = [...(rec.recommendations || []), ...(liked.movies || [])];
+  // Search for movie
+  const searchData = await fetch(`/api/movies/search?q=`).then(r => r.json());
+  
+  // Just use popular endpoint to find any movie
+  const popular = await fetch('/api/movies/popular').then(r => r.json());
+  const movieList = [...allMovies, ...(popular.movies || [])];
+  const movie = movieList.find(m => m.id === movieId);
+  if (!movie) return;
+
+  const isLiked = userLiked.has(movieId);
+  const isWatched = userWatched.has(movieId);
+  
+  document.getElementById('modal-content').innerHTML = `
+    <div class="modal-poster">
+      <img src="${movie.poster}" alt="${movie.title}" onerror="this.src='https://picsum.photos/seed/${movie.id}m/300/450'">
+    </div>
+    <div class="modal-details">
+      <div class="modal-genres">${(movie.genres || []).join(' · ')}</div>
+      <h2 class="modal-title">${movie.title}</h2>
+      <div class="modal-meta">${movie.year} · Dir. ${movie.director}</div>
+      <div class="modal-rating">⭐ ${movie.rating} / 10</div>
+      <p class="modal-desc">${movie.description || ''}</p>
+      <div class="modal-cast">
+        <strong>Cast:</strong> ${(movie.cast || []).join(', ')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary ${isLiked ? 'liked' : ''}" id="modal-like-btn" onclick="modalToggleLike(${movieId})">
+          ${isLiked ? '❤️ Liked' : '🤍 Like'}
+        </button>
+        <button class="btn-secondary ${isWatched ? 'watched' : ''}" id="modal-watch-btn" onclick="modalToggleWatch(${movieId})">
+          ${isWatched ? '✅ Watched' : '👁️ Mark Watched'}
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('movie-modal').classList.remove('hidden');
+}
+
+let _modalMovieId = null;
+
+async function openModal(movieId) {
+  _modalMovieId = movieId;
+  const popular = await fetch('/api/movies/popular').then(r => r.json());
+  const liked = await fetch('/api/movies/liked').then(r => r.json());
+  const recs = await fetch('/api/recommendations').then(r => r.json());
+  const all = [...(popular.movies||[]), ...(liked.movies||[]), ...(recs.recommendations||[])];
+  const movie = all.find(m => m.id === movieId);
+  if (!movie) return;
+  renderModal(movie);
+}
+
+function renderModal(movie) {
+  const isLiked = userLiked.has(movie.id);
+  const isWatched = userWatched.has(movie.id);
+  document.getElementById('modal-content').innerHTML = `
+    <div class="modal-poster">
+      <img src="${movie.poster}" alt="${movie.title}" onerror="this.src='https://picsum.photos/seed/${movie.id}m/300/450'">
+    </div>
+    <div class="modal-details">
+      <div class="modal-genres">${(movie.genres || []).join(' · ')}</div>
+      <h2 class="modal-title">${movie.title}</h2>
+      <div class="modal-meta">${movie.year} · Dir. ${movie.director}</div>
+      <div class="modal-rating">⭐ ${movie.rating} / 10</div>
+      <p class="modal-desc">${movie.description || ''}</p>
+      <div class="modal-cast"><strong>Cast:</strong> ${(movie.cast || []).join(', ')}</div>
+      <div class="modal-actions">
+        <button class="btn-primary ${isLiked ? 'liked' : ''}" id="modal-like-btn" onclick="modalToggleLike(${movie.id})">
+          ${isLiked ? '❤️ Liked' : '🤍 Like'}
+        </button>
+        <button class="btn-secondary ${isWatched ? 'watched' : ''}" id="modal-watch-btn" onclick="modalToggleWatch(${movie.id})">
+          ${isWatched ? '✅ Watched' : '👁️ Mark Watched'}
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('movie-modal').classList.remove('hidden');
+}
+
+async function modalToggleLike(movieId) {
+  const isLiked = userLiked.has(movieId);
+  const data = await fetch(isLiked ? '/api/movies/unlike' : '/api/movies/like', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userLiked = new Set(data.liked || []);
+  const btn = document.getElementById('modal-like-btn');
+  if (btn) {
+    btn.textContent = userLiked.has(movieId) ? '❤️ Liked' : '🤍 Like';
+    btn.classList.toggle('liked', userLiked.has(movieId));
+  }
+  loadLiked();
+}
+
+async function modalToggleWatch(movieId) {
+  const isWatched = userWatched.has(movieId);
+  const data = await fetch(isWatched ? '/api/movies/unwatch' : '/api/movies/watch', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userWatched = new Set(data.watched || []);
+  const btn = document.getElementById('modal-watch-btn');
+  if (btn) {
+    btn.textContent = userWatched.has(movieId) ? '✅ Watched' : '👁️ Mark Watched';
+    btn.classList.toggle('watched', userWatched.has(movieId));
+  }
+  if (!isWatched) setTimeout(() => loadRecommendations(), 500);
+}
+
+function closeModal(e) {
+  if (e.target.id === 'movie-modal') closeModalBtn();
+}
+function closeModalBtn() {
+  document.getElementById('movie-modal').classList.add('hidden');
+}
+
+async function logout() {
+  await fetch('/api/logout', {method: 'POST'});
+  window.location.href = '/';
+}
+
+document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalBtn(); });
+</script>
+{% endblock %}

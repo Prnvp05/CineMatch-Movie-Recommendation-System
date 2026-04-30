@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}CineMatch{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% block nav %}
+  <nav class="navbar">
+    <a href="/dashboard" class="nav-logo">CINE<span>MATCH</span></a>
+    <div class="nav-links">
+      <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">Discover</a>
+      <a href="/search" class="nav-link {% if request.path == '/search' %}active{% endif %}">Search</a>
+      <a href="/watched" class="nav-link {% if request.path == '/watched' %}active{% endif %}">Watched</a>
+    </div>
+    <div class="nav-right">
+      <span class="nav-user" id="nav-username">—</span>
+      <button class="btn-ghost" onclick="logout()">Sign Out</button>
+    </div>
+  </nav>
+  {% endblock %}
+
+  <main>{% block content %}{% endblock %}</main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

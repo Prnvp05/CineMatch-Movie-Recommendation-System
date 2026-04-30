@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pick Your Favourites — CineMatch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="onboarding-page">
+
+<div class="grain"></div>
+
+<header class="onboard-header">
+  <div class="logo-mark small">CINE<span>MATCH</span></div>
+  <div class="step-indicator">
+    <div class="step active">1</div>
+    <div class="step-line"></div>
+    <div class="step">2</div>
+  </div>
+</header>
+
+<main class="onboard-main">
+  <div class="onboard-hero">
+    <h1>What films have you <em>loved?</em></h1>
+    <p>Select at least 3 movies you've enjoyed. We'll use this to tune your recommendations.</p>
+    <div class="selection-counter"><span id="count">0</span> selected</div>
+  </div>
+
+  <div class="movie-picker-grid" id="picker-grid">
+    {% for movie in movies %}
+    <div class="picker-card" data-id="{{ movie.id }}" onclick="togglePick(this, {{ movie.id }})">
+      <div class="picker-img">
+        <img src="{{ movie.poster }}" alt="{{ movie.title }}" loading="lazy" onerror="this.src='https://picsum.photos/seed/{{ movie.id }}fallback/300/450'">
+        <div class="picker-overlay">
+          <div class="check-icon">✓</div>
+        </div>
+      </div>
+      <div class="picker-info">
+        <div class="picker-title">{{ movie.title }}</div>
+        <div class="picker-meta">{{ movie.year }} · {{ movie.genres[0] if movie.genres else '' }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="onboard-footer">
+    <div class="footer-hint" id="footer-hint">Select at least 3 to continue</div>
+    <button class="btn-primary large" id="next-btn" onclick="goNext()" disabled>
+      Next: Your Preferences →
+    </button>
+  </div>
+</main>
+
+<script>
+const selected = new Set();
+
+function togglePick(el, id) {
+  if (selected.has(id)) {
+    selected.delete(id);
+    el.classList.remove('picked');
+  } else {
+    selected.add(id);
+    el.classList.add('picked');
+  }
+  document.getElementById('count').textContent = selected.size;
+  const btn = document.getElementById('next-btn');
+  const hint = document.getElementById('footer-hint');
+  btn.disabled = selected.size < 3;
+  hint.textContent = selected.size < 3
+    ? `Select ${3 - selected.size} more to continue`
+    : `${selected.size} films selected — ready to go!`;
+}
+
+async function goNext() {
+  const btn = document.getElementById('next-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  await fetch('/api/onboarding/movies', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_ids: Array.from(selected)})
+  });
+  window.location.href = '/onboarding/preferences';
+}
+</script>
+</body>
+</html>

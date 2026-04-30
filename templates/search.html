@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Search — CineMatch{% endblock %}
+
+{% block content %}
+<div class="search-page">
+  <div class="grain"></div>
+  <div class="search-hero">
+    <h1>Find a <em>film</em></h1>
+    <div class="search-bar-wrapper">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Search by title…" oninput="handleSearch()" autocomplete="off">
+      <button class="clear-btn" id="clear-btn" onclick="clearSearch()" style="display:none">✕</button>
+    </div>
+  </div>
+
+  <div id="search-results" class="movie-grid"></div>
+  <div id="search-empty" class="empty-state" style="display:none">No films found for that search.</div>
+  <div id="search-hint" class="search-hint">Start typing to search through our library of 50 films…</div>
+</div>
+
+<!-- Movie Detail Modal (same as dashboard) -->
+<div class="modal-overlay hidden" id="movie-modal" onclick="closeModal(event)">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModalBtn()">✕</button>
+    <div class="modal-content" id="modal-content"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let userLiked = new Set();
+let userWatched = new Set();
+let searchTimer = null;
+
+async function init() {
+  const status = await fetch('/api/user/status').then(r => r.json());
+  userLiked = new Set(status.liked_ids || []);
+  userWatched = new Set(status.watched_ids || []);
+  document.getElementById('nav-username').textContent = status.username || '';
+}
+
+function handleSearch() {
+  const q = document.getElementById('search-input').value.trim();
+  document.getElementById('clear-btn').style.display = q ? 'block' : 'none';
+  clearTimeout(searchTimer);
+  if (!q) {
+    document.getElementById('search-results').innerHTML = '';
+    document.getElementById('search-empty').style.display = 'none';
+    document.getElementById('search-hint').style.display = 'block';
+    return;
+  }
+  document.getElementById('search-hint').style.display = 'none';
+  searchTimer = setTimeout(() => doSearch(q), 250);
+}
+
+async function doSearch(q) {
+  const data = await fetch(`/api/movies/search?q=${encodeURIComponent(q)}`).then(r => r.json());
+  const grid = document.getElementById('search-results');
+  const empty = document.getElementById('search-empty');
+  if (!data.results || data.results.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = data.results.map(m => movieCard(m)).join('');
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  handleSearch();
+}
+
+function movieCard(m) {
+  const isLiked = userLiked.has(m.id) || m.is_liked;
+  const isWatched = userWatched.has(m.id) || m.is_watched;
+  return `
+  <div class="movie-card" onclick="openModal(${m.id})">
+    <div class="card-poster">
+      <img src="${m.poster}" alt="${m.title}" loading="lazy" onerror="this.src='https://picsum.photos/seed/${m.id}s/300/450'">
+      <div class="card-overlay">
+        <div class="card-actions" onclick="event.stopPropagation()">
+          <button class="action-btn ${isLiked ? 'active' : ''}" title="Like" onclick="toggleLike(${m.id}, this)">
+            ${isLiked ? '❤️' : '🤍'}
+          </button>
+          <button class="action-btn ${isWatched ? 'active' : ''}" title="Mark watched" onclick="toggleWatch(${m.id}, this)">
+            ${isWatched ? '✅' : '👁️'}
+          </button>
+        </div>
+      </div>
+      <div class="card-rating">⭐ ${m.rating}</div>
+    </div>
+    <div class="card-info">
+      <div class="card-title">${m.title}</div>
+      <div class="card-meta">${m.year} · ${(m.genres || []).slice(0,2).join(', ')}</div>
+    </div>
+  </div>`;
+}
+
+async function toggleLike(movieId, btn) {
+  const isLiked = userLiked.has(movieId);
+  const data = await fetch(isLiked ? '/api/movies/unlike' : '/api/movies/like', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userLiked = new Set(data.liked || []);
+  btn.textContent = userLiked.has(movieId) ? '❤️' : '🤍';
+  btn.classList.toggle('active', userLiked.has(movieId));
+}
+
+async function toggleWatch(movieId, btn) {
+  const isWatched = userWatched.has(movieId);
+  const data = await fetch(isWatched ? '/api/movies/unwatch' : '/api/movies/watch', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userWatched = new Set(data.watched || []);
+  btn.textContent = userWatched.has(movieId) ? '✅' : '👁️';
+  btn.classList.toggle('active', userWatched.has(movieId));
+}
+
+async function openModal(movieId) {
+  const [popularRes, searchRes] = await Promise.all([
+    fetch('/api/movies/popular').then(r => r.json()),
+    fetch('/api/movies/search?q=').then(r => r.json())
+  ]);
+  const q = document.getElementById('search-input').value.trim();
+  const searchData = await fetch(`/api/movies/search?q=${encodeURIComponent(q || 'the')}`).then(r => r.json());
+  const all = [...(popularRes.movies||[]), ...(searchData.results||[])];
+  const movie = all.find(m => m.id === movieId);
+  if (!movie) return;
+  renderModal(movie);
+}
+
+function renderModal(movie) {
+  const isLiked = userLiked.has(movie.id);
+  const isWatched = userWatched.has(movie.id);
+  document.getElementById('modal-content').innerHTML = `
+    <div class="modal-poster">
+      <img src="${movie.poster}" alt="${movie.title}" onerror="this.src='https://picsum.photos/seed/${movie.id}m/300/450'">
+    </div>
+    <div class="modal-details">
+      <div class="modal-genres">${(movie.genres || []).join(' · ')}</div>
+      <h2 class="modal-title">${movie.title}</h2>
+      <div class="modal-meta">${movie.year} · Dir. ${movie.director}</div>
+      <div class="modal-rating">⭐ ${movie.rating} / 10</div>
+      <p class="modal-desc">${movie.description || ''}</p>
+      <div class="modal-cast"><strong>Cast:</strong> ${(movie.cast || []).join(', ')}</div>
+      <div class="modal-actions">
+        <button class="btn-primary ${isLiked ? 'liked' : ''}" id="modal-like-btn" onclick="modalToggleLike(${movie.id})">
+          ${isLiked ? '❤️ Liked' : '🤍 Like'}
+        </button>
+        <button class="btn-secondary ${isWatched ? 'watched' : ''}" id="modal-watch-btn" onclick="modalToggleWatch(${movie.id})">
+          ${isWatched ? '✅ Watched' : '👁️ Mark Watched'}
+        </button>
+      </div>
+    </div>`;
+  document.getElementById('movie-modal').classList.remove('hidden');
+}
+
+async function modalToggleLike(movieId) {
+  const isLiked = userLiked.has(movieId);
+  const data = await fetch(isLiked ? '/api/movies/unlike' : '/api/movies/like', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userLiked = new Set(data.liked || []);
+  const btn = document.getElementById('modal-like-btn');
+  if (btn) { btn.textContent = userLiked.has(movieId) ? '❤️ Liked' : '🤍 Like'; btn.classList.toggle('liked', userLiked.has(movieId)); }
+  // Re-render search
+  handleSearch();
+}
+
+async function modalToggleWatch(movieId) {
+  const isWatched = userWatched.has(movieId);
+  const data = await fetch(isWatched ? '/api/movies/unwatch' : '/api/movies/watch', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({movie_id: movieId})
+  }).then(r => r.json());
+  userWatched = new Set(data.watched || []);
+  const btn = document.getElementById('modal-watch-btn');
+  if (btn) { btn.textContent = userWatched.has(movieId) ? '✅ Watched' : '👁️ Mark Watched'; btn.classList.toggle('watched', userWatched.has(movieId)); }
+}
+
+function closeModal(e) { if (e.target.id === 'movie-modal') closeModalBtn(); }
+function closeModalBtn() { document.getElementById('movie-modal').classList.add('hidden'); }
+
+async function logout() {
+  await fetch('/api/logout', { method: 'POST' });
+  window.location.href = '/';
+}
+
+document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModalBtn(); });
+</script>
+{% endblock %}

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Preferences — CineMatch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body class="onboarding-page">
+
+<div class="grain"></div>
+
+<header class="onboard-header">
+  <div class="logo-mark small">CINE<span>MATCH</span></div>
+  <div class="step-indicator">
+    <div class="step done">✓</div>
+    <div class="step-line active"></div>
+    <div class="step active">2</div>
+  </div>
+</header>
+
+<main class="onboard-main pref-main">
+  <div class="onboard-hero">
+    <h1>Refine your <em>taste</em></h1>
+    <p>Choose the genres, directors, and actors that excite you most.</p>
+  </div>
+
+  <div class="pref-sections">
+    <!-- Genres -->
+    <section class="pref-section">
+      <h2 class="pref-heading">Favourite Genres</h2>
+      <div class="chip-cloud" id="genres-cloud">
+        {% for g in genres %}
+        <button class="chip" onclick="toggleChip(this, 'genres', '{{ g }}')">{{ g }}</button>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Directors -->
+    <section class="pref-section">
+      <h2 class="pref-heading">Favourite Directors</h2>
+      <div class="chip-cloud" id="directors-cloud">
+        {% for d in directors %}
+        <button class="chip" onclick="toggleChip(this, 'directors', '{{ d }}')">{{ d }}</button>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Actors -->
+    <section class="pref-section">
+      <h2 class="pref-heading">Favourite Actors</h2>
+      <div class="chip-cloud" id="actors-cloud">
+        {% for a in actors %}
+        <button class="chip" onclick="toggleChip(this, 'actors', '{{ a }}')">{{ a }}</button>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="onboard-footer">
+    <button class="btn-ghost" onclick="skipAndFinish()">Skip for now</button>
+    <button class="btn-primary large" onclick="saveAndFinish()">
+      Start Discovering →
+    </button>
+  </div>
+</main>
+
+<script>
+const prefs = { genres: new Set(), directors: new Set(), actors: new Set() };
+
+function toggleChip(el, category, value) {
+  if (prefs[category].has(value)) {
+    prefs[category].delete(value);
+    el.classList.remove('selected');
+  } else {
+    prefs[category].add(value);
+    el.classList.add('selected');
+  }
+}
+
+async function savePrefs(genres, directors, actors) {
+  const res = await fetch('/api/onboarding/preferences', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      genres: [...genres],
+      directors: [...directors],
+      actors: [...actors]
+    })
+  });
+  const data = await res.json();
+  if (data.redirect) window.location.href = data.redirect;
+}
+
+async function saveAndFinish() {
+  const btn = document.querySelector('.btn-primary.large');
+  btn.disabled = true;
+  btn.textContent = 'Building your profile…';
+  await savePrefs(prefs.genres, prefs.directors, prefs.actors);
+}
+
+async function skipAndFinish() {
+  await savePrefs(new Set(), new Set(), new Set());
+}
+</script>
+</body>
+</html>
